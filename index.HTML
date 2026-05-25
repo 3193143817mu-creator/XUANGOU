@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>安全用品选购系统</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 1000px; margin: 0 auto; padding: 20px; }
+        .section { border: 1px solid #eee; border-radius: 8px; padding: 20px; margin-bottom: 20px; }
+        .btn { background: #28a745; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-size: 16px; margin: 10px 0; }
+        .btn:disabled { background: #ccc; cursor: not-allowed; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { border: 1px solid #ddd; padding: 10px; text-align: center; }
+        .cart-item { display: flex; justify-content: space-between; align-items: center; margin: 8px 0; padding: 8px; background: #f8f9fa; border-radius: 4px; }
+        .empty { color: #999; padding: 20px; text-align: center; }
+    </style>
+</head>
+<body>
+    <h1>安全用品选购系统</h1>
+
+    <!-- 我的选购清单 -->
+    <div class="section">
+        <h2>我的选购清单</h2>
+        <div id="myCart" class="empty">暂无选购商品</div>
+        <button class="btn" id="submitBtn" disabled>提交选购完成</button>
+    </div>
+
+    <!-- 全员选购汇总记录 -->
+    <div class="section">
+        <button class="btn" id="exportBtn">一键导出全部数据</button>
+        <h2>全员选购汇总记录</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>选购账号</th>
+                    <th>选购明细</th>
+                    <th>合计金额</th>
+                    <th>提交状态</th>
+                </tr>
+            </thead>
+            <tbody id="recordTable"></tbody>
+        </table>
+    </div>
+
+    <script>
+        // ========== 配置：改成你自己的 data.json 地址 ==========
+        // 示例格式：https://你的用户名.github.io/你的仓库名/data.json
+        const DATA_URL = "https://你的用户名.github.io/你的仓库名/data.json";
+
+        // 商品价格表（可自行修改）
+        const PRICE_LIST = {
+            "防砸安全鞋": 120,
+            "耐酸碱橡胶靴": 80,
+            "高空安全带": 150
+        };
+
+        // 当前用户（这里可以改成登录获取，也可以手动输入）
+        const currentUser = prompt("请输入你的账号名：") || "匿名用户";
+        let myCart = {};
+
+        // 1. 初始化：加载数据并渲染
+        async function init() {
+            await loadRecords();
+            renderMyCart();
+        }
+
+        // 2. 从 data.json 加载所有记录
+        async function loadRecords() {
+            try {
+                const res = await fetch(DATA_URL);
+                if (!res.ok) throw new Error("加载失败");
+                const records = await res.json();
+                renderRecords(records);
+            } catch (err) {
+                alert("加载记录失败：" + err.message);
+            }
+        }
+
+        // 3. 渲染我的选购清单
+        function renderMyCart() {
+            const container = document.getElementById("myCart");
+            const submitBtn = document.getElementById("submitBtn");
+            const items = Object.entries(myCart);
+
+            if (items.length === 0) {
+                container.innerHTML = `<div class="empty">暂无选购商品</div>`;
+                submitBtn.disabled = true;
+                return;
+            }
+
+            let html = "";
+            let total = 0;
+            items.forEach(([name, count]) => {
+                const price = PRICE_LIST[name] || 0;
+                const subtotal = price * count;
+                total += subtotal;
+                html += `
+                    <div class="cart-item">
+                        <span>${name} × ${count}</span>
+                        <span>¥${subtotal}</span>
+                    </div>
+                `;
+            });
+            html += `<div class="cart-item" style="font-weight: bold;">合计：¥${total}</div>`;
+            container.innerHTML = html;
+            submitBtn.disabled = false;
+        }
+
+        // 4. 提交选购数据到 data.json
+        document.getElementById("submitBtn").addEventListener("click", async () => {
+            const items = Object.entries(myCart);
+            if (items.length === 0) return;
+
+            // 计算明细和金额
+            const details = items.map(([name, count]) => `${name}×${count}`).join("、");
+            let total = 0;
+            items.forEach(([name, count]) => {
+                total += (PRICE_LIST[name] || 0) * count;
+            });
+
+            // 构造新记录
+            const newRecord = {
+                user: currentUser,
+                details: details,
+                total: `${total}元`,
+                status: "已提交",
+                time: new Date().toLocaleString()
+            };
+
+            try {
+                // 读取现有数据
+                const res = await fetch(DATA_URL);
+                if (!res.ok) throw new Error("读取数据失败");
+                const records = await res.json();
+                
+                // 追加新记录（避免重复提交同一用户的记录，可根据需求修改）
+                const existingIndex = records.findIndex(r => r.user === currentUser);
+                if (existingIndex >= 0) {
+                    records[existingIndex] = newRecord;
+                } else {
+                    records.push(newRecord);
+                }
+
+                // 写回 data.json（这里用GitHub API提交，需要配置token，简化版先提示手动更新）
+                alert(`提交成功！请手动更新仓库里的data.json文件，内容为：\n${JSON.stringify(records, null, 2)}`);
+                
+                // 清空本地购物车
+                myCart = {};
+                renderMyCart();
+                loadRecords();
+            } catch (err) {
+                alert("提交失败：" + err.message);
+            }
+        });
+
+        // 5. 渲染全员记录表格
+        function renderRecords(records) {
+            const tbody = document.getElementById("recordTable");
+            if (records.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="4" class="empty">暂无记录</td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = records.map(r => `
+                <tr>
+                    <td>${r.user}</td>
+                    <td>${r.details}</td>
+                    <td>${r.total}</td>
+                    <td style="color: green;">✅ ${r.status}</td>
+                </tr>
+            `).join("");
+        }
+
+        // 6. 导出数据
+        document.getElementById("exportBtn").addEventListener("click", async () => {
+            const res = await fetch(DATA_URL);
+            const records = await res.json();
+            const blob = new Blob([JSON.stringify(records, null, 2)], { type: "application/json" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = "选购记录.json";
+            a.click();
+        });
+
+        // 示例：模拟添加商品（你可以替换成自己的选购逻辑）
+        // 实际使用时，这里改成你原来的商品选择按钮逻辑
+        function addToCart(name, count) {
+            myCart[name] = (myCart[name] || 0) + count;
+            renderMyCart();
+        }
+
+        // 示例：添加商品（可删除，仅测试用）
+        // addToCart("防砸安全鞋", 1);
+        // addToCart("耐酸碱橡胶靴", 7);
+        // addToCart("高空安全带", 4);
+
+        // 初始化
+        init();
+    </script>
+</body>
+</html>
